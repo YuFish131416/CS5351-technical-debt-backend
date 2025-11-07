@@ -11,11 +11,12 @@ from app.models.project import Project
 
 project_router = APIRouter(prefix="/projects", tags=["projects"])
 
+
 @project_router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 def create_project(
-    project: ProjectCreate,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+        project: ProjectCreate,
+        background_tasks: BackgroundTasks,
+        db: Session = Depends(get_db)
 ):
     """创建新项目"""
     service = ProjectService(db)
@@ -27,17 +28,19 @@ def create_project(
             detail=f"创建项目失败: {str(e)}"
         )
 
+
 @project_router.get("/", response_model=List[ProjectResponse])
 def list_projects(
-    skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db)
+        skip: int = 0,
+        limit: int = 100,
+        db: Session = Depends(get_db)
 ):
     """获取项目列表"""
     from app.repositories.project_repository import ProjectRepository
     repo = ProjectRepository(Project, db)
     projects = repo.db.query(Project).offset(skip).limit(limit).all()
     return projects
+
 
 @project_router.get("/{project_id}", response_model=ProjectResponse)
 def get_project(project_id: int, db: Session = Depends(get_db)):
@@ -52,6 +55,7 @@ def get_project(project_id: int, db: Session = Depends(get_db)):
         )
     return project
 
+
 @project_router.post("/{project_id}/analysis", status_code=status.HTTP_202_ACCEPTED)
 def trigger_analysis(project_id: int, db: Session = Depends(get_db)):
     """触发项目分析"""
@@ -64,6 +68,7 @@ def trigger_analysis(project_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"触发分析失败: {str(e)}"
         )
+
 
 @project_router.get("/{project_id}/debt-summary")
 def get_debt_summary(project_id: int, db: Session = Depends(get_db)):

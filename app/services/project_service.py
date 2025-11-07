@@ -1,5 +1,5 @@
 # app/services/project_service.py
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from app.models.debt import TechnicalDebt
 from app.models.project import Project

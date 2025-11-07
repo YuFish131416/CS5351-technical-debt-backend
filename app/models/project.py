@@ -2,6 +2,7 @@
 from sqlalchemy import Column, String, Text, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 
+from app.models.analysis import CodeAnalysis
 from app.models.base import BaseModel
 
 

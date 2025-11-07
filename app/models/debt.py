@@ -1,4 +1,8 @@
 # app/models/debt.py
+from sqlalchemy import Integer, ForeignKey, String, Text, JSON
+from sqlalchemy.orm import relationship
+from sqlalchemy.testing.schema import Column
+
 from app.models.base import BaseModel
 
 
@@ -12,6 +16,6 @@ class TechnicalDebt(BaseModel):
     description = Column(Text)
     estimated_effort = Column(Integer)  # 估算工时（小时）
     status = Column(String(20), default='open')  # 'open', 'in_progress', 'resolved'
-    metadata = Column(JSON)  # 额外元数据
+    project_metadata = Column(String)  # 额外元数据
 
     project = relationship("Project", back_populates="debt_items")

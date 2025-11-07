@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.api.api import api_router
+from app.api.projects import project_router  # 添加导入
+from app.api.debts import debt_router        # 添加导入
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -22,6 +24,8 @@ app.add_middleware(
 
 # 注册路由
 app.include_router(api_router, prefix="/api/v1")
+app.include_router(project_router, prefix="/api/v1")  # 添加项目路由
+app.include_router(debt_router, prefix="/api/v1")        # 添加债务路由
 
 @app.on_event("startup")
 async def startup_event():
