@@ -1,5 +1,7 @@
 # app/analysis/code_analyzer.py
 from typing import Dict, List
+import os
+from pathlib import Path
 
 import radon
 from radon.complexity import cc_visit
@@ -46,8 +48,22 @@ class CodeComplexityAnalyzer(BaseAnalyzer):
 
     def _find_source_files(self, project_path: str) -> List[str]:
         """查找源代码文件"""
-        # 实现文件查找逻辑
-        pass
+        src_files: List[str] = []
+        p = Path(project_path)
+
+        # 如果传入的是具体文件路径，直接返回该文件（存在且为文件）
+        if p.is_file():
+            return [str(p)]
+
+        # 否则把它当作目录，遍历常见源码文件扩展名
+        exts = {'.py', '.js', '.ts', '.java', '.go', '.cpp', '.c', '.jsx', '.tsx'}
+        if p.is_dir():
+            for root, _, files in os.walk(p):
+                for f in files:
+                    if Path(f).suffix.lower() in exts:
+                        src_files.append(str(Path(root) / f))
+
+        return src_files
 
     def _calculate_avg_complexity(self, complexity_results: List) -> float:
         if not complexity_results:

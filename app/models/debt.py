@@ -1,7 +1,6 @@
 # app/models/debt.py
-from sqlalchemy import Integer, ForeignKey, String, Text, JSON
+from sqlalchemy import Integer, ForeignKey, String, Text, JSON, Column
 from sqlalchemy.orm import relationship
-from sqlalchemy.testing.schema import Column
 
 from app.models.base import BaseModel
 
@@ -11,6 +10,7 @@ class TechnicalDebt(BaseModel):
 
     project_id = Column(Integer, ForeignKey("projects.id"))
     file_path = Column(String(500))
+    line = Column(Integer, nullable=True)
     debt_type = Column(String(50))  # 'complexity', 'duplication', 'smell', 'todo'
     severity = Column(String(20))  # 'low', 'medium', 'high', 'critical'
     description = Column(Text)

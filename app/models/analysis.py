@@ -1,7 +1,6 @@
 # app/models/analysis.py
-from sqlalchemy import Integer, ForeignKey, String, JSON
+from sqlalchemy import Integer, ForeignKey, String, JSON, Column
 from sqlalchemy.orm import relationship
-from sqlalchemy.testing.schema import Column
 
 from app.models.base import BaseModel
 

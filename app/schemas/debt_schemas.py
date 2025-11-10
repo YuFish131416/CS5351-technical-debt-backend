@@ -8,6 +8,7 @@ class TechnicalDebtBase(BaseModel):
     """技术债务基础模式"""
     project_id: int
     file_path: str = Field(..., description="文件路径")
+    line: Optional[int] = Field(None, description="行号，可选")
     debt_type: str = Field(..., description="债务类型")
     severity: str = Field(..., description="严重程度")
     description: str = Field(..., description="债务描述")

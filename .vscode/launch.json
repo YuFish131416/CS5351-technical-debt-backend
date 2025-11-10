@@ -1,0 +1,22 @@
+{
+    // VS Code 调试配置：为 Python/FastAPI 提供启动配置
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Uvicorn (FastAPI)",
+            "type": "python",
+            "request": "launch",
+            "module": "uvicorn",
+            // 修改为你的 app 实例路径，例如 main:app
+            "args": ["main:app", "--reload", "--host", "127.0.0.1", "--port", "8000"],
+            "jinja": true
+        },
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        }
+    ]
+}
