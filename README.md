@@ -1,154 +1,278 @@
-## Technical Debt Manager — 启动说明
+# Technical Debt Backend
 
-本仓库是一个基于 FastAPI 的后端服务（入口文件为 `main.py`）。下面给出在 Windows（PowerShell）下的本地启动步骤、常用脚本和注意事项。
-
-## 系统要求
-- Python 3.10+（建议使用 3.11）
-- Git（可选）
-- Redis（如果要运行 Celery worker 作为任务队列）
-
-项目依赖已列在 `requirements.txt` 中（包含 FastAPI、Uvicorn、SQLAlchemy、Celery、PyDriller、radon 等）。
-
-## 环境变量
-项目通过 `pydantic` 的 `BaseSettings` 从 `.env` 中读取配置。至少需要设置以下变量：
-## Technical Debt Manager — 启动与运行说明（已更新）
-
-此仓库是一个基于 FastAPI 的后端服务，ASGI app 在 `main.py` 中以 `app` 暴露（即 `main:app`）。本文档包含 Windows（PowerShell）上的本地开发启动、依赖、常用脚本、以及迁移/归档脚本的说明。
-
-重要变更摘要（2025）：
-- 项目响应已对外暴露 camelCase 别名（例如 `localPath`, `currentAnalysisId`），以兼容前端期望。
-- 已实现对 Windows 本地路径的归一化（查询时对 `local_path`/`file_path` 做 normpath、反斜杠->斜杠、去尾斜杠并在 Windows 上小写），以避免路径格式导致的匹配失败。
-- 一次性迁移脚本与临时诊断脚本已被归档到 `scripts/archive/migrations/`，避免仓库根目录混乱。请在必要时在归档目录中找到历史脚本并在受控环境下运行。
-
-## 系统要求
-- Python 3.10+（建议 3.11）
-- Git（可选）
-- Redis（如果要运行 Celery worker 作为任务队列）
-
-依赖已列在 `requirements.txt`（FastAPI、Uvicorn、SQLAlchemy、Celery、PyDriller、radon 等）。另外，配置模块使用 `pydantic-settings`，若运行时报错请安装它：
-
-```powershell
-pip install pydantic-settings
-```
-
-## 环境变量
-通过 pydantic 从 `.env` 读取配置。至少需要：
-- `DATABASE_URL`（必需）
-- `REDIS_URL`（用于 Celery broker/result，开发环境可指向本地 Redis）
-- `SECRET_KEY`
-
-示例（SQLite + 本地 Redis）：
-
-```env
-DATABASE_URL=sqlite:///./dev.db
-REDIS_URL=redis://localhost:6379/0
-SECRET_KEY=your-secret-key
-```
-
-若使用 Postgres，格式示例：
-`postgresql+psycopg2://user:password@host:5432/dbname`
-
-## 本地开发（PowerShell）
-
-1. 在项目根打开 PowerShell。
-2. 创建并激活虚拟环境：
-
-```powershell
-python -m venv .venv
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force
-. .\\.venv\\Scripts\\Activate.ps1
-```
-
-3. 安装依赖：
-
-```powershell
-pip install -r requirements.txt
-pip install pydantic-settings
-```
-
-4. 创建 `.env` 并填入必需变量。
-
-5. 启动开发服务器（推荐绑定到本地回环地址）：
-
-```powershell
-python -m uvicorn main:app --reload --host 127.0.0.1 --port 8000
-```
-
-访问： http://127.0.0.1:8000 ，自动文档位于 `/docs`。
-
-## 启动脚本
-- `start.ps1`：PowerShell 脚本（会帮助创建 venv/安装依赖并启动服务）。
-- `start.cmd`：Windows 批处理脚本。
-
-示例：
-
-```powershell
-# 在项目根运行
-.\\start.ps1
-```
-
-## Celery（后台任务）
-
-1. 确保 `REDIS_URL` 已配置且 Redis 服务已启动。
-2. 在激活虚拟环境后启动 worker（在新终端中）：
-
-```powershell
-celery -A app.tasks.celery_app.celery worker --loglevel=info
-```
-
-注意：若 `celery` 命令不可用，请确认虚拟环境已激活并且 celery 已安装。
-
-## 数据库与一次性迁移脚本（注意）
-
-此仓库使用 SQLAlchemy。`main.py` 在 dev 启动时会调用 `Base.metadata.create_all(bind=engine)` 来创建表结构（适合开发）。生产环境请使用迁移工具（强烈建议 Alembic）。
-
-我们保留了少量“一次性迁移脚本”（用于修补旧表结构），但这些脚本已移到：
-
-```
-scripts/archive/migrations/
-```
-
-如果需要运行某个归档脚本（仅供紧急或手工修复），请在项目根以 `PYTHONPATH` 可见项目包的方式运行。例如（PowerShell）：
-
-```powershell
-#$env:PYTHONPATH = (Get-Location).Path  # 如果你需要临时使 app 包可导入
-#$env:PYTHONPATH = (Get-Location).Path; python .\\scripts\\archive\\migrations\\db_migrate_add_debt_fields.py
-
-# 推荐的安全运行方式（不会自动修改生产数据库，先打印目标 DB）
-$env:PYTHONPATH = (Get-Location).Path; python .\\scripts\\archive\\migrations\\db_migrate_add_debt_fields.py
-```
-
-请务必在运行前：
-- 确认 `DATABASE_URL` 指向正确的数据库实例；
-- 在生产执行前做备份；
-- 优先考虑把这些改动迁入 Alembic migration，而非长期依赖手工脚本。
-
-## 重要端点变更（供前端参考）
-- POST /api/v1/projects/ 现在对 `localPath` 做去重（返回 camelCase 字段），若重复返回 200 与已有项目；创建返回 201。 
-- POST /api/v1/projects/{id}/analysis 返回立即的 `analysis_id`（Celery task_id），并返回 202/503/423 等语义化状态；当项目正在被分析时会返回 423 (Locked) 并在响应中提示："项目正在进行其他处理，请稍后操作"。
-
-注意：手动的锁定/解锁 API（如 POST /projects/{id}/lock）已被移除。项目会在后台任务开始时自动标记为正在处理（自动加锁），任务完成后自动清理该状态（自动解锁）。请不要依赖手动锁 API；前端应通过触发分析请求并在收到 423 时提示用户稍后重试。
-- GET /api/v1/projects/by-path?localPath=... 支持 Windows 路径归一化。
-- GET /api/v1/debts/project/{project_id}?file_path=... 同样支持路径归一化以匹配存储路径。
-
-## 运行测试
-
-```powershell
-pip install pytest
-pytest -q
-```
-
-## 常见故障排查
-- ModuleNotFoundError：确认虚拟环境激活并已安装 `requirements.txt` 与 `pydantic-settings`。
-- 数据库列缺失（如 `line` 或 `project_metadata`）：仓库包含归档迁移脚本可手动运行（见上文）。
-- Celery 无法连接 broker：检查 `REDIS_URL` 并确认 Redis 在运行。
+Technical Debt Backend 为 VS Code 扩展提供技术债务分析服务，负责接收项目或文件分析请求、运行热点与复杂度评估，并将结果以结构化数据持久化。本文档描述后端的架构、算法、接口、运行方式及扩展方案。
 
 ---
 
-如果你希望，我可以：
-- 把这些一次性迁移脚本转换为 Alembic revisions（推荐，需添加 alembic 依赖并初始化迁移目录）；
-- 生成 `docker-compose.yml`（含 Postgres + Redis + 后端）并写入运行/开发示例。
+## 1. 架构概览
 
-如需其他更新（英文版 README、CI 示例或更严格的迁移流程），告诉我你要优先的项，我会继续实现。
+```
+VS Code Extension ──HTTP──> FastAPI (app/api/*)
+                               │
+                               ├── AnalysisOrchestrator (app/services/analysis_orchestrator.py)
+                               │       ├── GitHistoryAnalyzer  (app/analysis/git_analyzer.py)
+                               │       ├── CodeComplexityAnalyzer (app/analysis/code_analyzer.py)
+                               │       └── TechnicalDebtCalculator (app/analysis/debt_calculator.py)
+                               │
+                               └── Celery Worker (app/tasks/analysis_tasks.py)
+                                       └── PostgreSQL (projects, technical_debts)
+```
 
-祝开发顺利！
+- **FastAPI**：提供 REST 接口，协调数据库访问与分析流程。
+- **AnalysisOrchestrator**：并发调用 Git 与代码分析器，统一输出数据模型。
+- **Celery**：执行长耗时或批量分析任务，复用与 API 相同的分析逻辑。
+- **PostgreSQL**：存储项目、债务记录及完整分析元数据。
+- **日志系统**：所有分析结果与异常写入 `logs/analysis_scan.log`。
+
+---
+
+## 2. 目录结构
+
+| 路径 | 说明 |
+| --- | --- |
+| `app/api` | FastAPI 路由层。`projects.py` 管理项目与全量分析；`debts.py` 处理债务查询、状态变更与内联分析。 |
+| `app/analysis` | 核心算法模块：`git_analyzer.py`、`code_analyzer.py`、`debt_calculator.py`、`base.py`。 |
+| `app/services` | 服务层。`analysis_orchestrator.py` 调度分析；`project_service.py` 封装项目业务流程。 |
+| `app/repositories` | 数据访问层，封装 SQLAlchemy 查询与更新。 |
+| `app/models` | ORM 定义，包括 `Project`, `TechnicalDebt`, `CodeAnalysis` 等。 |
+| `app/tasks` | Celery worker 定义与分析任务实现。 |
+| `logs/analysis_scan.log` | 分析日志文件。 |
+| `scripts/` | 数据迁移与调试脚本。 |
+
+---
+
+## 3. 分析管线
+
+### 3.1 AnalysisOrchestrator
+
+`analyze_project(project_path, file_path=None)`：
+
+1. 解析输入路径，生成统一键值用于匹配分析输出。
+2. 并发执行 `GitHistoryAnalyzer.analyze` 与 `CodeComplexityAnalyzer.analyze`。
+3. 将结果传入 `TechnicalDebtCalculator.calculate_debt_score`，生成债务分数、风险标记及元数据。
+4. 单文件模式下仅返回匹配文件；目录模式下返回全部分析结果。
+
+### 3.2 GitHistoryAnalyzer
+
+位置：`app/analysis/git_analyzer.py`
+
+- 依赖 PyDriller 遍历 Git 提交。
+- 原始指标：
+  - `change_count`
+  - `added_lines`、`deleted_lines`
+  - `authors`（去重）
+  - `last_modified`（UTC）
+- 支持的扩展名：`.py`, `.js`, `.jsx`, `.ts`, `.tsx`, `.java`, `.go`, `.cpp`, `.c`
+- 热点评分：`heat_score = min(1, 0.35*change + 0.3*churn + 0.2*author + 0.15*recency)`，其中 `recency_score` 按 7/180 天阈值衰减。
+- 异常处理：对无法访问的仓库写 warning，并返回空 dict。
+
+### 3.3 CodeComplexityAnalyzer
+
+位置：`app/analysis/code_analyzer.py`
+
+- 支持扩展名：`.py`, `.js`, `.jsx`, `.ts`, `.tsx`, `.java`, `.go`, `.cpp`, `.c`, `.map`, `.json`, `.css`, `.html`
+- 排除目录：`.git`, `.hg`, `.svn`, `node_modules`, `.venv`, `venv`, `__pycache__`, `dist`, `build`
+
+#### Python 文件
+
+- Radon：`cc_visit`、`mi_visit`、`radon.raw.analyze`
+- AST 分析：
+  - 深度嵌套 (`max_nesting_depth` ≥ 4)
+  - 参数数量 (`long_parameter_functions`)
+  - 复杂布尔 (`complex_conditionals`)
+  - 短命名 (`uninformative_identifiers`)
+- 长行与长函数：阈值分别为 120/180 字符、80 行。
+
+#### 非 Python 文件
+
+- 启发式：行数、非空行、注释密度、最长行。
+- 复用 `_detect_code_smells` 识别长行、长函数、深嵌套、复杂条件等。
+- Minified 识别：根据最大行长、总行数判定是否压缩/混淆；`.map/.json` 自动标记。
+
+#### 返回字段
+
+- `language`
+- `avg_complexity`, `max_complexity`
+- `maintainability_index`
+- `lines_of_code`, `logical_lines`, `comment_density`
+- `smell_score`, `smell_flags`, `smell_samples`
+- `longest_line`, `long_line_count`, `long_function_count`
+- `high_complexity_blocks`, `deeply_nested_functions`, `long_parameter_functions`, `complex_conditionals`
+- `is_minified_candidate`
+
+### 3.4 TechnicalDebtCalculator
+
+位置：`app/analysis/debt_calculator.py`
+
+- 组件权重：
+  - 热点 `0.30`
+  - 复杂度 `0.20`
+  - 维护性 `0.15`
+  - 规模 `0.10`
+  - 注释稀缺 `0.05`
+  - 代码异味 `0.20`
+- 输出：
+  - `debt_score` (0~1)
+  - `severity`：`low`, `medium`, `high`, `critical`
+  - `estimated_effort`：`ceil(2 + score*10 + LOC/250 + avg_complexity/2)`
+  - `risk_flags`：结合热点、复杂度、注释、smell 等指标
+  - `score_breakdown`
+  - `line`：`_derive_focus_line` 从复杂度块、深嵌套、长行、样本中推导代表性行号
+
+### 3.5 支持的后缀
+
+`SUPPORTED_SUFFIXES` 定义于 `app/api/projects.py`，与分析器保持同步，确保项目全量分析仅处理后端能够解析的文件类型。
+
+---
+
+## 4. REST API
+
+### 4.1 Projects
+
+| Method | Endpoint | 描述 |
+| --- | --- | --- |
+| `POST` | `/api/v1/projects/` | 创建项目，按 `local_path` 去重。 |
+| `GET` | `/api/v1/projects/` | 返回项目列表，支持 `skip`、`limit`。 |
+| `GET` | `/api/v1/projects/{id}` | 获取项目详情。 |
+| `GET` | `/api/v1/projects/by-path` | 通过 `localPath` 查询项目。 |
+| `GET` | `/api/v1/projects/{id}/current` | 遍历项目目录，对受支持文件运行分析并持久化结果。 |
+| `POST` | `/api/v1/projects/{id}/analysis` | 触发 Celery 异步分析，可选 `file_path`。 |
+| `GET` | `/api/v1/projects/{id}/analysis/{analysis_id}` | 查询异步任务状态。 |
+| `GET` | `/api/v1/projects/{id}/debt-summary` | 聚合严重度与估算工时统计。 |
+
+### 4.2 Debts
+
+| Method | Endpoint | 描述 |
+| --- | --- | --- |
+| `GET` | `/api/v1/debts/project/{project_id}` | 获取项目债务。`file_path` 参数命中真实文件时触发内联分析。返回 `metadata`，即 `project_metadata` 的 JSON 反序列化。 |
+| `PUT` | `/api/v1/debts/{debt_id}` | 更新债务状态，返回最新 `metadata`。 |
+
+### 4.3 错误策略
+
+- 所有错误均返回结构化 JSON，包含 `error`, `message`, `service`（若适用）。
+- 常见状态码：
+  - `400`：参数或业务校验失败。
+  - `404`：项目或文件不存在。
+  - `423`：项目正在分析。
+  - `503`：依赖（Redis/数据库）不可用。
+- 虚拟文档或缺失文件在日志中记录 `virtual_path_skipped`、`file_not_found` 等 detail。
+
+---
+
+## 5. 数据模型
+
+### 5.1 projects 表
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | INTEGER | 主键 |
+| `name` | VARCHAR | 项目名称 |
+| `local_path` | VARCHAR | 工作区根路径，唯一约束 `uq_projects_local_path` |
+| `status` | VARCHAR | `idle`, `queued`, `analyzing` 等 |
+| `current_analysis_id` | VARCHAR | 当前 Celery 任务 ID |
+| `last_analysis_id` | VARCHAR | 最近完成任务 ID |
+| `last_analysis_at` | TIMESTAMP | 最近分析完成时间 |
+
+### 5.2 technical_debts 表
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | INTEGER | 主键 |
+| `project_id` | INTEGER | 外键：projects.id |
+| `file_path` | VARCHAR | 相对路径，小写、`/` 分隔 |
+| `line` | INTEGER | 重点行号，可空 |
+| `debt_type` | VARCHAR | `hotspot` |
+| `severity` | VARCHAR | `low`, `medium`, `high`, `critical` |
+| `description` | TEXT | 例如 `Technical debt hotspot: 0.32 score` |
+| `estimated_effort` | INTEGER | 预计修复工时（小时） |
+| `status` | VARCHAR | `open`, `in_progress`, `resolved`, `ignored` |
+| `project_metadata` | JSON | 完整分析数据（热度、复杂度、异味、样本、风险标记等） |
+| `created_at`, `updated_at` | TIMESTAMP | 审计字段 |
+
+### 5.3 日志
+
+- `logs/analysis_scan.log`：数组形式记录每次分析结果。字段示例：
+  - `file_path`
+  - `debt_score`
+  - `severity`
+  - `metadata.detail`（含错误描述或 info 提示）
+
+---
+
+## 6. 路径解析与过滤
+
+- `_resolve_target_path`（`app/api/debts.py`）：
+  - 处理绝对/相对路径组合，优先返回存在的真实路径。
+  - 基于项目 `local_path` 进行大小写不敏感匹配，并容忍前导下划线差异。
+  - 对虚拟文档（`extension-output-`, `untitled:`, `vscode-remote://` 等）直接返回 info 级结果而不抛错。
+- `_normalize_storage_path`：统一存储路径格式（小写、`/` 分隔、无尾部 `/`）。
+- `_choose_storage_path`：优先选用复杂度指标中的 `relative_path`，再退回原始键或绝对路径。
+- `SUPPORTED_SUFFIXES`：`app/api/projects.py` 中定义，项目级分析仅处理这些后缀。
+
+---
+
+## 7. Celery 任务流程
+
+- 入口：`app/tasks/analysis_tasks.py::analyze_project_task(project_id, file_path=None)`
+- 步骤：
+  1. 查询项目并解析 `local_path`。
+  2. 调用 `AnalysisOrchestrator` 执行分析。
+  3. `_persist_debt_scores` 写入 `technical_debts`，`_write_scan_log` 记录日志。
+  4. 更新项目状态与任务 ID。
+  5. 捕获异常时恢复项目状态并记录错误。
+
+---
+
+## 8. 部署与运行
+
+### 8.1 本地开发
+
+```powershell
+cd backend/CS5351-technical-debt-backend
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn main:app --reload
+celery -A app.tasks.celery_app worker --loglevel=info
+```
+
+- 使用 `test_main.http` 或 REST Client 调试接口。
+- 监控 `logs/analysis_scan.log` 及控制台日志了解分析过程。
+
+### 8.2 环境变量
+
+| 变量 | 示例 | 说明 |
+| --- | --- | --- |
+| `DATABASE_URL` | `postgresql+psycopg2://user:password@localhost:5432/technical_debt` | PostgreSQL 连接串 |
+| `REDIS_URL` | `redis://localhost:6379/0` | Celery Broker 与 Backend |
+| `LOG_LEVEL` | `INFO` | FastAPI 日志等级 |
+
+### 8.3 生产建议
+
+- 使用 Supervisor、systemd 或容器编排托管 Uvicorn 与 Celery。
+- 启用 HTTPS，配置健康检查与连接池。
+- 监控 PostgreSQL、Redis 状态并启用备份策略。
+- 集成日志收集系统聚合 `analysis_scan.log` 与服务日志。
+
+---
+
+## 9. 开发与扩展
+
+- **新增语言**：在 `SUPPORTED_SUFFIXES`、`CodeComplexityAnalyzer._detect_language`、`_analyze_non_python` 中增加支持，并视需要调整 smell 识别逻辑。
+- **调整权重**：修改 `TechnicalDebtCalculator` 中各组件函数，保持 `risk_flags` 与前端展示一致。
+- **性能优化**：可引入结果缓存、拆分 Celery 任务或并行文件分析以缩短耗时。
+- **故障排查**：
+  - 查看 `analysis_scan.log` 获取分析明细。
+  - 关注 FastAPI/Celery 日志判断依赖状态。
+  - 使用 `scripts/inspect_project.py` 等脚本查询数据库。
+
+---
+
+## 10. 联系方式
+
+- 技术支持：`YuFishYPH@gmail.com`
+- 反馈渠道：GitHub Issues
+
+---
+
+Technical Debt Backend 为 VS Code 扩展提供稳定的技术债务检测与评估基础能力，可根据团队需求继续扩展语言支持、权重模型及集成方案。
