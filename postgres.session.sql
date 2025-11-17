@@ -1,5 +1,3 @@
-ALTER TABLE projects ADD COLUMN IF NOT EXISTS locked_by varchar(100);
-ALTER TABLE projects ADD COLUMN IF NOT EXISTS lock_expires_at timestamptz;
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS status varchar(50) DEFAULT 'idle';
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS current_analysis_id varchar(100);
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_analysis_id varchar(100);

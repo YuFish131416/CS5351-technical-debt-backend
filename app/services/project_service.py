@@ -79,7 +79,7 @@ class ProjectService:
                 celery_app.control.revoke(task_id, terminate=False)
             except Exception:
                 pass
-            # 将错误上抛，API 层会映射为 503/400/409 等
+            # 将错误上抛，API 层会映射为 503/400/423 等（423 表示 Locked，当项目被分析时使用）
             raise
 
     def get_project_debt_summary(self, project_id: int) -> Dict:

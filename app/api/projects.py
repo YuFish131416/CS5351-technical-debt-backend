@@ -51,10 +51,6 @@ def create_project(
                     "localPath": existing.local_path,
                     "language": existing.language,
                     "status": existing.status,
-                    "locked_by": existing.locked_by,
-                    "lockedBy": existing.locked_by,
-                    "lock_expires_at": existing.lock_expires_at.isoformat() if getattr(existing, 'lock_expires_at', None) else None,
-                    "lockExpiresAt": existing.lock_expires_at.isoformat() if getattr(existing, 'lock_expires_at', None) else None,
                     "current_analysis_id": existing.current_analysis_id,
                     "currentAnalysisId": existing.current_analysis_id,
                     "created_at": existing.created_at.isoformat() if getattr(existing, 'created_at', None) else None
@@ -72,10 +68,6 @@ def create_project(
             "localPath": proj.local_path,
             "language": proj.language,
             "status": proj.status,
-            "locked_by": proj.locked_by,
-            "lockedBy": proj.locked_by,
-            "lock_expires_at": proj.lock_expires_at.isoformat() if getattr(proj, 'lock_expires_at', None) else None,
-            "lockExpiresAt": proj.lock_expires_at.isoformat() if getattr(proj, 'lock_expires_at', None) else None,
             "current_analysis_id": proj.current_analysis_id,
             "currentAnalysisId": proj.current_analysis_id,
             "created_at": proj.created_at.isoformat() if getattr(proj, 'created_at', None) else None
@@ -123,72 +115,10 @@ def get_project_by_path(localPath: str, db: Session = Depends(get_db)):
     return proj
 
 
-@project_router.post("/{project_id}/lock")
-def lock_project(project_id: int, body: dict = Body(...), db: Session = Depends(get_db)):
-    """请求锁定项目：Body: {"client_id": "<uuid>", "ttl_seconds": 300}"""
-    client_id = body.get('client_id')
-    ttl = int(body.get('ttl_seconds', 300))
-    if not client_id:
-        raise HTTPException(status_code=400, detail={"error": "bad_request", "message": "client_id required"})
-    from app.repositories.project_repository import ProjectRepository
-    repo = ProjectRepository(Project, db)
-    try:
-        # 使用事务并锁定行
-        with db.begin():
-            project = db.query(Project).with_for_update().filter(Project.id == project_id).first()
-            if not project:
-                raise HTTPException(status_code=404, detail={"error": "not_found", "message": "Project not found"})
-
-            now = datetime.now(timezone.utc)
-            if project.locked_by and project.lock_expires_at and project.lock_expires_at > now:
-                # 已被占用
-                raise HTTPException(status_code=409, detail={"locked": True, "locked_by": project.locked_by, "lockedBy": project.locked_by, "lock_expires_at": project.lock_expires_at.isoformat() if project.lock_expires_at else None, "lockExpiresAt": project.lock_expires_at.isoformat() if project.lock_expires_at else None})
-
-            # 设定锁
-            project.locked_by = client_id
-            project.lock_expires_at = now + timedelta(seconds=ttl)
-            project.status = 'locked'
-            db.add(project)
-        return {"locked": True, "locked_by": client_id, "lockedBy": client_id, "lock_expires_at": project.lock_expires_at.isoformat(), "lockExpiresAt": project.lock_expires_at.isoformat()}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail={"error": "internal_error", "message": str(e)})
-
-
-@project_router.post("/{project_id}/lock/renew")
-def renew_lock(project_id: int, body: dict = Body(...), db: Session = Depends(get_db)):
-    client_id = body.get('client_id')
-    ttl = int(body.get('ttl_seconds', 300))
-    if not client_id:
-        raise HTTPException(status_code=400, detail={"error": "bad_request", "message": "client_id required"})
-    with db.begin():
-        project = db.query(Project).with_for_update().filter(Project.id == project_id).first()
-        if not project:
-            raise HTTPException(status_code=404, detail={"error": "not_found", "message": "Project not found"})
-        if project.locked_by != client_id:
-            raise HTTPException(status_code=403, detail={"error": "forbidden", "message": "Not lock owner"})
-        project.lock_expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl)
-        db.add(project)
-    return {"locked": True, "locked_by": client_id, "lockedBy": client_id, "lock_expires_at": project.lock_expires_at.isoformat(), "lockExpiresAt": project.lock_expires_at.isoformat()}
-
-
-@project_router.post("/{project_id}/unlock")
-def unlock_project(project_id: int, body: dict = Body(...), db: Session = Depends(get_db)):
-    client_id = body.get('client_id')
-    if not client_id:
-        raise HTTPException(status_code=400, detail={"error": "bad_request", "message": "client_id required"})
-    with db.begin():
-        project = db.query(Project).with_for_update().filter(Project.id == project_id).first()
-        if not project:
-            raise HTTPException(status_code=404, detail={"error": "not_found", "message": "Project not found"})
-        if project.locked_by != client_id:
-            raise HTTPException(status_code=403, detail={"error": "forbidden", "message": "Not lock owner"})
-        project.locked_by = None
-        project.lock_expires_at = None
-        project.status = 'idle'
-        db.add(project)
-    return {"unlocked": True}
+# NOTE: Lock endpoints removed. Projects are now locked automatically during processing
+# by the analysis task. Manual lock/renew/unlock endpoints were removed to avoid
+# dual locking mechanisms. The task marks project.status/current_analysis_id at
+# start and clears them on completion.
 
 
 @project_router.get("/{project_id}/current")
@@ -200,10 +130,6 @@ def get_project_current(project_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail={"error": "not_found", "message": "Project not found"})
     return {
         "id": project.id,
-        "locked_by": project.locked_by,
-        "lockedBy": project.locked_by,
-        "lock_expires_at": project.lock_expires_at.isoformat() if getattr(project, 'lock_expires_at', None) else None,
-        "lockExpiresAt": project.lock_expires_at.isoformat() if getattr(project, 'lock_expires_at', None) else None,
         "current_analysis_id": project.current_analysis_id,
         "currentAnalysisId": project.current_analysis_id,
         "status": project.status
@@ -249,8 +175,10 @@ def trigger_analysis(project_id: int, payload: dict = Body(default={}), db: Sess
         # 更语义化的错误映射
         msg = str(e)
         if 'already_analyzing' in msg:
-            # 返回 409 并告知当前正在运行的 analysis id（从项目表可查询，简单返回 message）
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"error": "conflict", "message": "Analysis already running"})
+            # 项目正在被分析/处理，返回统一的中文提示，便于前端展示友好信息
+            # 使用 423 (Locked) 更清晰地表达资源被占用的语义
+            code = getattr(status, 'HTTP_423_LOCKED', 423)
+            raise HTTPException(status_code=code, detail={"error": "conflict", "message": "项目正在进行其他处理，请稍后操作"})
         if 'project_not_found' in msg:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"error": "not_found", "message": "Project not found"})
         if "redis" in msg.lower() or "broker" in msg.lower():
@@ -288,7 +216,18 @@ def get_analysis_status(project_id: int, analysis_id: str):
         }
         return response
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"error": "bad_request", "message": str(e)})
+        # 如果是 broker/redis/连接相关的错误，返回 503 表示依赖不可用，便于前端重试或降级处理。
+        msg = str(e)
+        try:
+            # _redis 在模块顶部尝试导入，若成功可用于类型检查
+            if ( _redis is not None and hasattr(_redis, 'exceptions') and isinstance(e, _redis.exceptions.RedisError) ) or 'redis' in msg.lower() or 'broker' in msg.lower() or 'connection' in msg.lower():
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                    detail={"error": "dependency_unavailable", "service": "redis/celery", "message": msg})
+        except Exception:
+            # 报错时继续降级处理为 400
+            pass
+
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"error": "bad_request", "message": msg})
 
 
 @project_router.get("/{project_id}/debt-summary")

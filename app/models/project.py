@@ -18,9 +18,9 @@ class Project(BaseModel):
     local_path = Column(String(500))
     language = Column(String(50))
 
-    # Locking and status fields
-    locked_by = Column(String(100), nullable=True)
-    lock_expires_at = Column(DateTime(timezone=True), nullable=True)
+    # Status and analysis tracking fields
+    # NOTE: manual lock fields (locked_by, lock_expires_at) were removed
+    # as locking is handled automatically by the analysis task.
     status = Column(String(50), default='idle')
     current_analysis_id = Column(String(100), nullable=True)
     last_analysis_id = Column(String(100), nullable=True)

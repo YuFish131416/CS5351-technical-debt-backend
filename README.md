@@ -125,7 +125,9 @@ $env:PYTHONPATH = (Get-Location).Path; python .\\scripts\\archive\\migrations\\d
 
 ## 重要端点变更（供前端参考）
 - POST /api/v1/projects/ 现在对 `localPath` 做去重（返回 camelCase 字段），若重复返回 200 与已有项目；创建返回 201。 
-- POST /api/v1/projects/{id}/analysis 返回立即的 `analysis_id`（Celery task_id），并返回 202/503/409 等语义化状态。
+- POST /api/v1/projects/{id}/analysis 返回立即的 `analysis_id`（Celery task_id），并返回 202/503/423 等语义化状态；当项目正在被分析时会返回 423 (Locked) 并在响应中提示："项目正在进行其他处理，请稍后操作"。
+
+注意：手动的锁定/解锁 API（如 POST /projects/{id}/lock）已被移除。项目会在后台任务开始时自动标记为正在处理（自动加锁），任务完成后自动清理该状态（自动解锁）。请不要依赖手动锁 API；前端应通过触发分析请求并在收到 423 时提示用户稍后重试。
 - GET /api/v1/projects/by-path?localPath=... 支持 Windows 路径归一化。
 - GET /api/v1/debts/project/{project_id}?file_path=... 同样支持路径归一化以匹配存储路径。
 

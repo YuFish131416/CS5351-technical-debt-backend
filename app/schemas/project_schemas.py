@@ -43,8 +43,6 @@ class ProjectResponse(ProjectBase):
     id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
-    locked_by: Optional[str] = None
-    lock_expires_at: Optional[datetime] = None
     current_analysis_id: Optional[str] = None
     last_analysis_id: Optional[str] = None
     last_analysis_at: Optional[datetime] = None
