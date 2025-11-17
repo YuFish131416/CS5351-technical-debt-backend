@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.api.api import api_router
 from app.api.projects import project_router  # 添加导入
 from app.api.debts import debt_router        # 添加导入
+from app.tasks.analysis_tasks import _ensure_log_file  # 确保分析日志文件可用
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -33,6 +34,7 @@ async def startup_event():
     # 创建数据库表
     from app.core.database import engine, Base
     Base.metadata.create_all(bind=engine)
+    _ensure_log_file()
 
 if __name__ == "__main__":
     import uvicorn

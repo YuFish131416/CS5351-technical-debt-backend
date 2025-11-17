@@ -1,24 +1,63 @@
 # app/api/projects.py
+import asyncio
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import List, Dict
+
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status, Body, Header, Response
 from sqlalchemy.orm import Session
-from typing import List
 
 from app.core.database import get_db
 from app.schemas.project_schemas import ProjectCreate, ProjectResponse, ProjectUpdate
 from app.schemas.analysis_schemas import AnalysisResponse
 from app.services.project_service import ProjectService
+from app.services.analysis_orchestrator import AnalysisOrchestrator
 from app.models.project import Project
 from app.tasks.celery_app import celery_app
+from app.api.debts import _persist_debt_scores
+from app.tasks.analysis_tasks import _write_scan_log
 import traceback
 try:
     import redis as _redis
 except Exception:
     _redis = None
 from fastapi import Header, Request
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from sqlalchemy.exc import SQLAlchemyError
 
 project_router = APIRouter(prefix="/projects", tags=["projects"])
+
+
+SUPPORTED_SUFFIXES = {
+    '.py', '.js', '.jsx', '.ts', '.tsx', '.java', '.go', '.cpp', '.c', '.map', '.json', '.css', '.html'
+}
+
+
+def _is_supported_file(raw_path: str, debt_data: Dict) -> bool:
+    metrics = debt_data.get('complexity_metrics') or {}
+    language = metrics.get('language')
+    if language:
+        return True
+
+    candidates = [
+        metrics.get('absolute_path'),
+        metrics.get('relative_path'),
+        raw_path,
+    ]
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        suffixes = [s.lower() for s in Path(str(candidate)).suffixes]
+        if not suffixes:
+            continue
+        last = suffixes[-1]
+        if last in SUPPORTED_SUFFIXES:
+            return True
+        if last == '.map' and len(suffixes) > 1 and suffixes[-2] in {'.js', '.ts'}:
+            return True
+
+    return False
 
 
 @project_router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -128,6 +167,39 @@ def get_project_current(project_id: int, db: Session = Depends(get_db)):
     project = repo.get(project_id)
     if not project:
         raise HTTPException(status_code=404, detail={"error": "not_found", "message": "Project not found"})
+    if not project.local_path:
+        raise HTTPException(status_code=400, detail={"error": "invalid_project", "message": "Project local path is missing"})
+
+    project_root = Path(project.local_path).expanduser()
+    if project_root.is_file():
+        project_root = project_root.parent
+    if not project_root.exists():
+        raise HTTPException(status_code=404, detail={"error": "project_path_missing", "message": "Project local path does not exist"})
+
+    orchestrator = AnalysisOrchestrator()
+    try:
+        analysis_result = asyncio.run(orchestrator.analyze_project(str(project_root)))
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail={"error": "project_path_missing", "message": "Project local path does not exist"})
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail={"error": "analysis_failed", "message": str(exc) or repr(exc)})
+
+    debt_scores = analysis_result.get('debt_scores', {}) or {}
+    filtered_scores: Dict[str, Dict] = {}
+    for key, score_data in debt_scores.items():
+        if _is_supported_file(key, score_data):
+            filtered_scores[key] = score_data
+
+    persisted = _persist_debt_scores(db, project.id, filtered_scores)
+    if persisted:
+        _write_scan_log(project.id, persisted)
+
+    project.last_analysis_at = datetime.now(timezone.utc)
+    project.status = 'idle'
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+
     return {
         "id": project.id,
         "current_analysis_id": project.current_analysis_id,
